@@ -1,24 +1,39 @@
-# Aplicativo Barbearia
+# Prosperous Barbershop
 
-oi
+Aplicativo responsivo para gestão de barbearias, com a ideia **“Agenda que ocupa a cadeira”**. A versão atual é uma demonstração interativa: os dados de exemplo e as alterações ficam no `localStorage` do navegador.
 
-This project was built with [Lovable](https://lovable.dev).
+## Demonstração disponível
 
-## Build with Lovable
+- Painel diário, semanal e mensal, com faturamento baseado em atendimentos e vendas marcados como pagos.
+- Visão simulada de proprietário e barbeiro; o barbeiro vê seus próprios dados e ajusta sua disponibilidade e serviços atendidos.
+- Cadastro de equipe, serviços e produtos; registro manual de vendas.
+- Fluxo público de agendamento sem conta, com seleção de serviço, barbeiro, dia e horário.
+- Links públicos da barbearia (`/b/:shopSlug`) e do barbeiro (`/b/:shopSlug/:barberSlug`).
+- Personalização local do nome, logotipo, cor de destaque, contatos, jornada e janela de cancelamento.
+- Catálogo público de produtos, sem checkout online.
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/f3be5d32-cd00-4aa8-a0ec-4ecfacefdfe1).
+Use o seletor **“Ver como”** para alternar a demonstração entre proprietário e barbeiros. **Restaurar** apaga as alterações de demonstração e repõe os dados de exemplo.
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+## Executar localmente
 
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requer Bun (recomendado, por causa do `bun.lock`) ou Node.js com npm.
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+bun install --frozen-lockfile
+bun run dev
 ```
+
+Verificações disponíveis:
+
+```sh
+bun run test
+bun run lint
+bun x tsc --noEmit
+bun run build
+```
+
+## Próxima etapa para produção
+
+Cadastro/login, autorização real por função, persistência multi-barbearia, bloqueio atômico de reservas, cancelamento/remarcação por token seguro e envio de confirmações e lembretes por e-mail ainda precisam ser conectados ao backend da Lovable. O `AGENTS.md` do repositório exige que alterações no banco sejam feitas no editor da Lovable; não crie migrations manualmente. E-mail depende de provedor e domínio remetente configurados. WhatsApp, nesta versão, usa links de conversa com mensagem pronta, sem API automatizada.
+
+O projeto está conectado à [Lovable](https://lovable.dev/projects/f3be5d32-cd00-4aa8-a0ec-4ecfacefdfe1); alterações enviadas ao branch conectado sincronizam o código com o editor.
