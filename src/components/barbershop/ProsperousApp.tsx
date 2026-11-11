@@ -1591,7 +1591,7 @@ function SettingsPage({
             <label>
               Link da loja
               <div className="settings-slug">
-                <span>prosperous.app/b/</span>
+                <span>/b/</span>
                 <input
                   value={settings.slug}
                   onChange={(event) =>
@@ -1648,10 +1648,17 @@ function SettingsPage({
                   type="button"
                 />
               ))}
+              <label className="custom-color-option" title="Escolher outra cor">
+                <input
+                  aria-label="Escolher outra cor de destaque"
+                  type="color"
+                  value={settings.accent}
+                  onChange={(event) => updateSettings({ accent: event.target.value })}
+                />
+                <span>+</span>
+              </label>
             </div>
-            <small>
-              O grafite e o âmbar mantêm a linguagem da plataforma; a loja personaliza o seu acento.
-            </small>
+            <small>Escolha entre as cores prontas ou selecione qualquer cor para combinar com sua marca.</small>
           </div>
         </section>
         <section className="panel settings-card">
@@ -1726,46 +1733,75 @@ function SettingsPage({
         <section className="panel settings-card settings-wide">
           <div className="panel-head">
             <div>
-              <span className="panel-kicker">LEMBRETES E PRIVACIDADE</span>
-              <h2>Confirmações automáticas</h2>
+              <span className="panel-kicker">AVISOS E LEMBRETES</span>
+              <h2>E-mails da agenda</h2>
             </div>
             <Bell size={18} />
           </div>
-          <div className="email-provider-status">
-            <span className="email-status-icon">
-              <Mail size={17} />
-            </span>
-            <div>
-              <strong>
-                {settings.emailProviderConfigured
-                  ? "Provedor de e-mail conectado"
-                  : "Provedor de e-mail ainda não configurado"}
-              </strong>
-              <p>
-                {settings.emailProviderConfigured
-                  ? "Confirmações da loja e lembretes de 24 horas estão ativos."
-                  : "O app está preparado para confirmar e lembrar os clientes por e-mail. Configure o domínio e o provedor no ambiente da Lovable para enviar mensagens reais."}
-              </p>
-            </div>
-            <span
-              className={`member-tag ${settings.emailProviderConfigured ? "member-active" : "member-pending"}`}
-            >
-              <i /> {settings.emailProviderConfigured ? "Ativo" : "Pendente"}
-            </span>
+          <div className="email-settings-grid">
+            <label className="email-setting-row">
+              <input
+                type="checkbox"
+                checked={settings.sendClientConfirmationEmail}
+                onChange={(event) =>
+                  updateSettings({ sendClientConfirmationEmail: event.target.checked })
+                }
+              />
+              <span>
+                <strong>Confirmação para o cliente</strong>
+                <small>Enviar para o endereço informado durante o agendamento.</small>
+              </span>
+            </label>
+            <label className="email-setting-row">
+              <input
+                type="checkbox"
+                checked={settings.notifyShopByEmail}
+                onChange={(event) => updateSettings({ notifyShopByEmail: event.target.checked })}
+              />
+              <span>
+                <strong>Avisar a barbearia</strong>
+                <small>Enviar para {settings.email || "o e-mail da loja"}.</small>
+              </span>
+            </label>
+            <label className="email-setting-row">
+              <input
+                type="checkbox"
+                checked={settings.notifyBarberByEmail}
+                onChange={(event) => updateSettings({ notifyBarberByEmail: event.target.checked })}
+              />
+              <span>
+                <strong>Avisar o barbeiro</strong>
+                <small>Usar o e-mail cadastrado no perfil de cada profissional.</small>
+              </span>
+            </label>
+            <label className="email-reminder-setting">
+              Lembrete antes do horário
+              <span>
+                <input
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={settings.reminderHours}
+                  onChange={(event) => updateSettings({ reminderHours: Number(event.target.value) })}
+                />
+                horas
+              </span>
+            </label>
           </div>
           <div className="settings-note">
-            <ShieldCheck size={15} /> Nunca coloque chaves de API neste navegador ou no código
-            público. Use os Secrets do ambiente Lovable.
+            <ShieldCheck size={15} /> Preferências e destinatários são ajustados aqui. Nesta
+            demonstração, os dados ficam salvos neste navegador e os e-mails automáticos ainda não
+            são enviados.
           </div>
         </section>
       </div>
       <div className="settings-save-row">
         <span>
-          <CheckCircle2 size={15} /> Alterações salvas automaticamente nesta demonstração.
+          <CheckCircle2 size={15} /> Alterações salvas automaticamente neste navegador.
         </span>
         <button
           className="button-primary"
-          onClick={() => onNotify("Configurações salvas na demonstração.")}
+          onClick={() => onNotify("Configurações salvas neste navegador.")}
           type="button"
         >
           Salvar configuração
@@ -1797,7 +1833,7 @@ function Modal({
       <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div className="modal-head">
           <div>
-            <span className="panel-kicker">PROSPEROUS BARBERSHOP</span>
+            <span className="panel-kicker">PAINEL DA BARBEARIA</span>
             <h2 id="modal-title">{title}</h2>
             <p>{description}</p>
           </div>
@@ -1899,8 +1935,8 @@ export function ProsperousApp() {
         >
           <BrandMark settings={workspace.settings} />
           <span>
-            <strong>Prosperous</strong>
-            <small>BARBERSHOP</small>
+            <strong>{workspace.settings.name}</strong>
+            <small>BARBEARIA</small>
           </span>
         </a>
         <div className="shop-switcher">
@@ -1986,7 +2022,7 @@ export function ProsperousApp() {
             <Menu size={19} />
           </button>
           <div className="breadcrumb">
-            <span>Prosperous</span>
+            <span>{workspace.settings.name}</span>
             <ChevronRight size={14} />
             <strong>{screenLabels[screen]}</strong>
           </div>
@@ -2031,8 +2067,7 @@ export function ProsperousApp() {
             <div>
               <strong>Modo demonstração</strong>
               <span>
-                Dados de exemplo ficam salvos somente neste navegador. Login, banco e e-mail real
-                ainda precisam ser conectados.
+                Personalização, equipe e agenda ficam salvas neste navegador nesta demonstração.
               </span>
             </div>
             <button
@@ -2099,7 +2134,7 @@ export function ProsperousApp() {
             <SettingsPage workspace={workspace} setWorkspace={setWorkspace} onNotify={notify} />
           )}
           <footer className="app-footer">
-            <span>© 2026 Prosperous Barbershop</span>
+            <span>© 2026 {workspace.settings.name}</span>
             <span>Feito para deixar o tempo trabalhar a seu favor.</span>
             <a href={`/b/${workspace.settings.slug}`} target="_blank" rel="noreferrer">
               <ExternalLink size={13} /> Página pública

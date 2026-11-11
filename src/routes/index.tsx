@@ -6,10 +6,10 @@ import { ProsperousApp } from "@/components/barbershop/ProsperousApp";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Prosperous Barbershop · Agenda que ocupa a cadeira" },
+      { title: "Agenda da barbearia · Agende seu horário" },
       {
         name: "description",
-        content: "Agenda, equipe e vendas da barbearia em uma demonstração interativa.",
+        content: "Agendamento, equipe e gestão da barbearia.",
       },
     ],
   }),

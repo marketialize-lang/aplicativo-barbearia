@@ -6,7 +6,7 @@ import { PublicBookingRoute } from "@/components/barbershop/PublicBookingRoute";
 export const Route = createFileRoute("/b/$shopSlug/$barberSlug")({
   head: () => ({
     meta: [
-      { title: "Agende com seu barbeiro · Prosperous Barbershop" },
+      { title: "Agende com seu barbeiro · Barbearia" },
       { name: "description", content: "Escolha seu serviço e horário." },
     ],
   }),

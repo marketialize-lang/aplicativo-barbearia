@@ -172,7 +172,7 @@ export function BookingFlow({
           </button>
         ) : (
           <a className="booking-back" href="/">
-            <ArrowLeft size={17} /> Prosperous
+            <ArrowLeft size={17} /> {workspace.settings.name}
           </a>
         )}
         <span className="booking-demo-tag">
@@ -490,12 +490,6 @@ export function BookingFlow({
                   <strong>{formatCurrency(service?.price ?? 0)}</strong>
                 </div>
               </div>
-              {!workspace.settings.emailProviderConfigured && (
-                <p className="booking-email-note">
-                  A confirmação por e-mail será ativada quando o provedor de envio da loja estiver
-                  configurado.
-                </p>
-              )}
               <div className="booking-confirm-actions">
                 <a
                   className="button-primary"
@@ -540,7 +534,7 @@ export function BookingFlow({
             </div>
           )}
           <div className="booking-footer-note">
-            Atendimento feito com cuidado. <span>Prosperous Barbershop</span>
+            Atendimento feito com cuidado. <span>{workspace.settings.name}</span>
           </div>
           {workspace.products.some((product) => product.active) && (
             <section className="booking-product-catalog" aria-labelledby="booking-products-title">

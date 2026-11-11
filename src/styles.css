@@ -1962,6 +1962,8 @@
 }
 .accent-picker > div {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 9px;
 }
 .accent-picker button {
@@ -1970,6 +1972,33 @@
   border: 2px solid transparent;
   border-radius: 50%;
   cursor: pointer;
+}
+.custom-color-option {
+  position: relative;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px dashed #777d87;
+  border-radius: 50%;
+  color: #d8dbe0;
+  cursor: pointer;
+}
+.custom-color-option input {
+  position: absolute;
+  inset: -5px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.custom-color-option span {
+  pointer-events: none;
+  font-size: 18px;
+  line-height: 1;
 }
 .accent-picker button.active {
   outline: 2px solid #eee7d9;
@@ -2006,6 +2035,65 @@
   color: #969ba5;
   font-size: 9px;
   line-height: 1.5;
+}
+.email-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.email-setting-row,
+.email-reminder-setting {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #30343b;
+  border-radius: 9px;
+  background: #1b1e23;
+  padding: 12px;
+  color: #d8dbe0;
+  cursor: pointer;
+}
+.email-setting-row > input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+  accent-color: var(--shop-accent);
+}
+.email-setting-row > span {
+  display: grid;
+  gap: 5px;
+}
+.email-setting-row strong {
+  font-size: 10px;
+}
+.email-setting-row small {
+  color: #969ba5;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.email-reminder-setting {
+  flex-direction: column;
+  gap: 8px;
+  font-size: 10px;
+  cursor: default;
+}
+.email-reminder-setting > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #aeb3bb;
+}
+.email-reminder-setting input {
+  width: 74px;
+  height: 32px;
+  border: 1px solid #3b4048;
+  border-radius: 6px;
+  background: #191c21;
+  color: #f0eee8;
+  padding: 0 8px;
 }
 .settings-note,
 .inline-notice {
@@ -3015,6 +3103,9 @@
   }
   .settings-form-grid {
     gap: 10px;
+  }
+  .email-settings-grid {
+    grid-template-columns: 1fr;
   }
   .availability-times {
     grid-template-columns: repeat(2, 1fr);

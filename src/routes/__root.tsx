@@ -80,14 +80,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Prosperous Barbershop" },
+      { title: "Agenda da barbearia" },
       { name: "description", content: "Agenda que ocupa a cadeira." },
-      { name: "author", content: "Prosperous Barbershop" },
-      { property: "og:title", content: "Prosperous Barbershop" },
+      { name: "author", content: "Agenda da barbearia" },
+      { property: "og:title", content: "Agenda da barbearia" },
       { property: "og:description", content: "Agenda que ocupa a cadeira." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@ProsperousBarbershop" },
     ],
     links: [
       {

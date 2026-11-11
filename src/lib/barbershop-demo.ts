@@ -80,7 +80,10 @@ export type ShopSettings = {
   cancellationHours: number;
   openTime: string;
   closeTime: string;
-  emailProviderConfigured: boolean;
+  sendClientConfirmationEmail: boolean;
+  notifyShopByEmail: boolean;
+  notifyBarberByEmail: boolean;
+  reminderHours: number;
 };
 
 export type DemoWorkspace = {
@@ -95,10 +98,23 @@ export type DemoWorkspace = {
 export const DEMO_STORAGE_KEY = "prosperous-barbershop-demo-v1";
 
 export const ACCENT_OPTIONS = [
+  { name: "Preto", value: "#111318" },
+  { name: "Branco", value: "#f3f4f6" },
   { name: "Âmbar", value: "#f0a646" },
   { name: "Cobre", value: "#d47b46" },
+  { name: "Laranja", value: "#f97316" },
+  { name: "Vermelho", value: "#ef4444" },
+  { name: "Rosa", value: "#ec4899" },
+  { name: "Roxo", value: "#8b5cf6" },
+  { name: "Violeta", value: "#a855f7" },
+  { name: "Azul", value: "#3b82f6" },
+  { name: "Azul-claro", value: "#38bdf8" },
+  { name: "Índigo", value: "#6366f1" },
+  { name: "Turquesa", value: "#14b8a6" },
+  { name: "Verde", value: "#22c55e" },
   { name: "Verde-lima", value: "#b8e27b" },
-  { name: "Azul-petróleo", value: "#6ea8a0" },
+  { name: "Azul-petróleo", value: "#0f766e" },
+  { name: "Marrom", value: "#92400e" },
   { name: "Vinho", value: "#c57583" },
 ];
 
@@ -495,7 +511,10 @@ export function createDemoWorkspace(today = TODAY_LABEL): DemoWorkspace {
       cancellationHours: 2,
       openTime: "09:00",
       closeTime: "20:00",
-      emailProviderConfigured: false,
+      sendClientConfirmationEmail: true,
+      notifyShopByEmail: true,
+      notifyBarberByEmail: true,
+      reminderHours: 24,
     },
     barbers,
     services,
@@ -540,7 +559,12 @@ export function loadDemoWorkspace(): DemoWorkspace {
     if (!raw) return createDemoWorkspace(new Date().toLocaleDateString("en-CA"));
     const parsed = JSON.parse(raw) as DemoWorkspace;
     if (!parsed.settings || !Array.isArray(parsed.appointments)) return createDemoWorkspace();
-    return parsed;
+    const defaults = createDemoWorkspace(new Date().toLocaleDateString("en-CA"));
+    return {
+      ...defaults,
+      ...parsed,
+      settings: { ...defaults.settings, ...parsed.settings },
+    };
   } catch {
     return createDemoWorkspace(new Date().toLocaleDateString("en-CA"));
   }

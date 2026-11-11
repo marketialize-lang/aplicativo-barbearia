@@ -9,7 +9,8 @@ Aplicativo responsivo para gestão de barbearias, com a ideia **“Agenda que oc
 - Cadastro de equipe, serviços e produtos; registro manual de vendas.
 - Fluxo público de agendamento sem conta, com seleção de serviço, barbeiro, dia e horário.
 - Links públicos da barbearia (`/b/:shopSlug`) e do barbeiro (`/b/:shopSlug/:barberSlug`).
-- Personalização local do nome, logotipo, cor de destaque, contatos, jornada e janela de cancelamento.
+- Personalização local do nome, logotipo, cores prontas ou personalizadas, contatos, jornada e janela de cancelamento.
+- Preferências de confirmação por e-mail para cliente, barbearia e barbeiro, com lembrete ajustável.
 - Catálogo público de produtos, sem checkout online.
 
 Use o seletor **“Ver como”** para alternar a demonstração entre proprietário e barbeiros. **Restaurar** apaga as alterações de demonstração e repõe os dados de exemplo.
@@ -32,8 +33,6 @@ bun x tsc --noEmit
 bun run build
 ```
 
-## Próxima etapa para produção
+## Limites desta demonstração
 
-Cadastro/login, autorização real por função, persistência multi-barbearia, bloqueio atômico de reservas, cancelamento/remarcação por token seguro e envio de confirmações e lembretes por e-mail ainda precisam ser conectados ao backend da Lovable. O `AGENTS.md` do repositório exige que alterações no banco sejam feitas no editor da Lovable; não crie migrations manualmente. E-mail depende de provedor e domínio remetente configurados. WhatsApp, nesta versão, usa links de conversa com mensagem pronta, sem API automatizada.
-
-O projeto está conectado à [Lovable](https://lovable.dev/projects/f3be5d32-cd00-4aa8-a0ec-4ecfacefdfe1); alterações enviadas ao branch conectado sincronizam o código com o editor.
+Esta versão guarda dados e configurações somente no navegador atual. Não há contas reais, sincronização entre dispositivos, persistência compartilhada entre barbearias nem envio automático de e-mails. As preferências de destinatários e lembretes já podem ser ajustadas no painel; para enviar mensagens e sincronizar reservas em produção, o aplicativo ainda precisa de um serviço de dados e de envio conectado. WhatsApp usa links com mensagem pronta, sem envio automático por API.
