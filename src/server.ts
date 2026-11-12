@@ -22,6 +22,7 @@ type WorkerEnv = {
   SESSION_SECRET?: string;
   EMAIL_WEBHOOK_URL?: string;
   EMAIL_WEBHOOK_SECRET?: string;
+  ASAAS_API_KEY?: string;
 };
 
 type CloudflareRuntimeRequest = Request & {
@@ -55,6 +56,7 @@ type ApiBody = {
   workspace?: unknown;
   appointment?: BookingPayload;
   shopSlug?: unknown;
+  plan?: unknown;
 };
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
@@ -113,6 +115,127 @@ async function passwordDigest(password: string, shopId: string, secret: string) 
   return signValue(`shop:${shopId}:${password}`, secret);
 }
 
+type AsaasPlan = "monthly" | "yearly";
+type AsaasBillingState = {
+  plan: AsaasPlan;
+  checkoutUrl?: string;
+  status: "pending" | "active" | "paused";
+  customerId?: string;
+  subscriptionId?: string;
+  updatedAt: string;
+};
+
+function asaasApiBase(apiKey: string) {
+  if (apiKey.startsWith("$aact_hmlg_") || apiKey.startsWith("aact_hmlg_")) return "https://api-sandbox.asaas.com/v3";
+  if (apiKey.startsWith("$aact_prod_") || apiKey.startsWith("aact_prod_")) return "https://api.asaas.com/v3";
+  return null;
+}
+
+async function asaasFetch<T>(apiKey: string, path: string, body?: unknown) {
+  const base = asaasApiBase(apiKey);
+  if (!base) throw new Error("A chave Asaas não foi reconhecida. Use uma chave Sandbox ou Produção do Asaas.");
+  const response = await fetch(`${base}${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { access_token: apiKey, accept: "application/json", "content-type": "application/json", "user-agent": "AgendaBarbearia/1.0" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const result = await response.json().catch(() => null) as (T & { errors?: Array<{ description?: string }> }) | null;
+  if (!response.ok) {
+    const message = result?.errors?.map((item) => item.description).filter(Boolean).join(" ");
+    throw new Error(message || `O Asaas recusou a solicitação (HTTP ${response.status}).`);
+  }
+  if (!result) throw new Error("O Asaas retornou uma resposta inválida.");
+  return result as T;
+}
+
+function saoPauloFirstChargeDate() {
+  const date = new Date(Date.now() + 48 * 60 * 60 * 1000);
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return `${year}-${month}-${day} 12:00:00`;
+}
+
+async function ensureAsaasWebhook(env: WorkerEnv, request: Request) {
+  if (!env.DB || !env.ASAAS_API_KEY || !env.SESSION_SECRET) throw new Error("A integração Asaas ainda não está configurada nesta conta.");
+  const existing = await env.DB.prepare("SELECT value FROM app_state WHERE id = 'asaas-webhook-configured'").first<{ value: string }>();
+  if (existing) return;
+  const webhookToken = await signValue("asaas-webhook-auth-v1", env.SESSION_SECRET);
+  const baseUrl = new URL(request.url).origin;
+  await asaasFetch(env.ASAAS_API_KEY, "/webhooks", {
+    name: "Agenda Barbearia",
+    url: `${baseUrl}/api/webhooks/asaas`,
+    email: "marketialize@gmail.com",
+    enabled: true,
+    interrupted: false,
+    apiVersion: 3,
+    authToken: webhookToken,
+    sendType: "SEQUENTIALLY",
+    events: ["CHECKOUT_PAID", "SUBSCRIPTION_CREATED", "PAYMENT_RECEIVED", "PAYMENT_OVERDUE", "PAYMENT_DELETED", "PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED"],
+  });
+  await env.DB.prepare("INSERT OR REPLACE INTO app_state (id, value, updated_at) VALUES ('asaas-webhook-configured', ?, ?)")
+    .bind(JSON.stringify({ url: `${baseUrl}/api/webhooks/asaas` }), new Date().toISOString()).run();
+}
+
+async function handleAsaasWebhook(request: Request, env: WorkerEnv) {
+  if (request.method !== "POST") return json({ error: "Método inválido." }, 405);
+  if (!env.DB || !env.SESSION_SECRET) return json({ error: "Webhook indisponível." }, 503);
+  const expectedToken = await signValue("asaas-webhook-auth-v1", env.SESSION_SECRET);
+  if (request.headers.get("asaas-access-token") !== expectedToken) return json({ error: "Não autorizado." }, 401);
+  const event = await request.json().catch(() => null) as {
+    id?: unknown; event?: unknown; checkout?: { id?: unknown; customer?: unknown };
+    payment?: { id?: unknown; customer?: unknown; subscription?: unknown };
+    subscription?: { id?: unknown; customer?: unknown; externalReference?: unknown };
+  } | null;
+  if (!event || typeof event.id !== "string" || typeof event.event !== "string") return json({ error: "Evento inválido." }, 400);
+  const processedId = `asaas-event:${event.id}`;
+  const prior = await env.DB.prepare("SELECT id FROM app_state WHERE id = ?").bind(processedId).first<{ id: string }>();
+  if (prior) return json({ received: true, duplicate: true });
+
+  let shopId: string | undefined;
+  let customerId: string | undefined;
+  if (event.event === "CHECKOUT_PAID" && typeof event.checkout?.id === "string") {
+    const row = await env.DB.prepare("SELECT value FROM app_state WHERE id = ?").bind(`asaas-checkout:${event.checkout.id}`).first<{ value: string }>();
+    if (row) {
+      const billing = JSON.parse(row.value) as AsaasBillingState & { shopId?: string };
+      shopId = billing.shopId;
+      customerId = typeof event.checkout.customer === "string" ? event.checkout.customer : undefined;
+      const next: AsaasBillingState & { shopId?: string } = { ...billing, status: "active", ...(customerId ? { customerId } : {}), updatedAt: new Date().toISOString() };
+      await env.DB.prepare("INSERT OR REPLACE INTO app_state (id, value, updated_at) VALUES (?, ?, ?)")
+        .bind(`asaas-client:${shopId}`, JSON.stringify(next), next.updatedAt).run();
+      if (shopId) await env.DB.prepare("UPDATE barber_clients SET status = 'active' WHERE id = ?").bind(shopId).run();
+    }
+  } else if ((event.payment && typeof event.payment.customer === "string") || (event.subscription && typeof event.subscription.customer === "string")) {
+    customerId = event.payment?.customer as string | undefined ?? event.subscription?.customer as string | undefined;
+    const row = await env.DB.prepare("SELECT id, value FROM app_state WHERE id LIKE 'asaas-client:%'").all<{ id: string; value: string }>();
+    const found = row.results.find((item) => (JSON.parse(item.value) as AsaasBillingState).customerId === customerId);
+    if (found) {
+      shopId = found.id.slice("asaas-client:".length);
+      const billing = JSON.parse(found.value) as AsaasBillingState;
+      if (event.event === "SUBSCRIPTION_CREATED" && typeof event.subscription?.id === "string") {
+        const updatedAt = new Date().toISOString();
+        await env.DB.prepare("INSERT OR REPLACE INTO app_state (id, value, updated_at) VALUES (?, ?, ?)")
+          .bind(found.id, JSON.stringify({ ...billing, subscriptionId: event.subscription.id, updatedAt }), updatedAt).run();
+      }
+      const paid = event.event === "PAYMENT_RECEIVED";
+      const declined = ["PAYMENT_OVERDUE", "PAYMENT_DELETED", "PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED"].includes(event.event);
+      if (paid || declined) {
+        const updatedAt = new Date().toISOString();
+        const next = { ...billing, status: paid ? "active" : "paused", updatedAt } as AsaasBillingState;
+        await env.DB.prepare("INSERT OR REPLACE INTO app_state (id, value, updated_at) VALUES (?, ?, ?)")
+          .bind(found.id, JSON.stringify(next), updatedAt).run();
+        await env.DB.prepare("UPDATE barber_clients SET status = ? WHERE id = ?")
+          .bind(paid ? "active" : "paused", shopId).run();
+      }
+    }
+  }
+
+  await env.DB.prepare("INSERT OR IGNORE INTO app_state (id, value, updated_at) VALUES (?, ?, ?)")
+    .bind(processedId, JSON.stringify({ event: event.event, shopId, customerId }), new Date().toISOString()).run();
+  return json({ received: true });
+}
+
 function sessionCookie(session: Session, secret: string) {
   return signSession(session, secret).then((value) =>
     `barber_session=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=1209600`,
@@ -129,6 +252,7 @@ async function handleApi(request: Request, env: WorkerEnv) {
   const path = url.pathname;
   if (!path.startsWith("/api/")) return null;
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+  if (path === "/api/webhooks/asaas") return handleAsaasWebhook(request, env);
   if (!hasDatabase(env)) return json({ error: "O banco ainda não está conectado." }, 503);
 
   const body = ["POST", "PUT", "PATCH"].includes(request.method)
@@ -172,7 +296,11 @@ async function handleApi(request: Request, env: WorkerEnv) {
     const rows = await env.DB.prepare("SELECT id, name, slug, email, phone, status, created_at FROM barber_clients ORDER BY created_at DESC").all<{
       id: string; name: string; slug: string; email: string; phone: string; status: string; created_at: string;
     }>();
-    return json({ clients: rows.results.map((row) => ({ ...row, demoUrl: `/b/${row.slug}`, panelUrl: `/?shop=${row.slug}` })) });
+    const clients = await Promise.all(rows.results.map(async (row) => {
+      const billing = await env.DB.prepare("SELECT value FROM app_state WHERE id = ?").bind(`asaas-client:${row.id}`).first<{ value: string }>();
+      return { ...row, billing: billing ? JSON.parse(billing.value) as AsaasBillingState : null, demoUrl: `/b/${row.slug}`, panelUrl: `/?shop=${row.slug}` };
+    }));
+    return json({ clients });
   }
 
   if (path === "/api/central/clients" && request.method === "POST") {
@@ -201,7 +329,50 @@ async function handleApi(request: Request, env: WorkerEnv) {
   }
 
   const clientMatch = path.match(/^\/api\/central\/clients\/([a-f0-9-]+)$/);
+  const checkoutMatch = path.match(/^\/api\/central\/clients\/([a-f0-9-]+)\/checkout$/);
   const resetPasswordMatch = path.match(/^\/api\/central\/clients\/([a-f0-9-]+)\/reset-password$/);
+  if (checkoutMatch && request.method === "POST") {
+    if (!isCentral) return json({ error: "Acesso restrito à central." }, 401);
+    if (!env.ASAAS_API_KEY) return json({ error: "Asaas ainda não conectado. Falta cadastrar com segurança a chave da API no Cloudflare." }, 503);
+    const plan = body?.plan;
+    if (plan !== "monthly" && plan !== "yearly") return json({ error: "Escolha um plano válido." }, 400);
+    const client = await env.DB.prepare("SELECT id, name FROM barber_clients WHERE id = ?").bind(checkoutMatch[1]).first<{ id: string; name: string }>();
+    if (!client) return json({ error: "Barbearia não encontrada." }, 404);
+    try {
+      const current = await env.DB.prepare("SELECT value FROM app_state WHERE id = ?").bind(`asaas-client:${client.id}`).first<{ value: string }>();
+      const currentBilling = current ? JSON.parse(current.value) as AsaasBillingState : null;
+      if (currentBilling?.status === "active") return json({ error: "Esta barbearia já tem um plano pago ativo." }, 409);
+      if (currentBilling?.status === "paused" && currentBilling.subscriptionId) return json({ error: "Esta conta tem uma assinatura anterior. Cancele ou regularize-a no Asaas antes de criar outra para evitar cobranças duplicadas." }, 409);
+      if (currentBilling?.status === "pending" && Date.now() - new Date(currentBilling.updatedAt).getTime() < 24 * 60 * 60 * 1000) return json({ error: "Já existe um link de pagamento válido para esta barbearia. Use o link mostrado no cartão ou aguarde até ele expirar." }, 409);
+      const checkoutReference = `${client.id}:${plan}:${crypto.randomUUID()}`;
+      await ensureAsaasWebhook(env, request);
+      const cycle = plan === "monthly" ? "MONTHLY" : "YEARLY";
+      const value = plan === "monthly" ? 49.9 : 300;
+      const origin = new URL(request.url).origin;
+      const checkout = await asaasFetch<{ id?: string }>(env.ASAAS_API_KEY, "/checkouts", {
+        billingTypes: ["PIX", "CREDIT_CARD"],
+        chargeTypes: ["RECURRENT"],
+        minutesToExpire: 1440,
+        externalReference: checkoutReference,
+        callback: { successUrl: `${origin}/?pagamento=retorno`, cancelUrl: `${origin}/?pagamento=cancelado`, expiredUrl: `${origin}/?pagamento=expirado` },
+        items: [{ name: `Agenda da Barbearia — ${plan === "monthly" ? "Plano mensal" : "Plano anual"}`, description: `${client.name} · ${cycle === "MONTHLY" ? "R$ 49,90 por mês" : "R$ 300 por ano"}`, quantity: 1, value }],
+        subscription: { cycle, nextDueDate: saoPauloFirstChargeDate() },
+      });
+      if (!checkout.id) throw new Error("O Asaas criou uma resposta sem identificador de checkout.");
+      const sandbox = env.ASAAS_API_KEY.startsWith("$aact_hmlg_") || env.ASAAS_API_KEY.startsWith("aact_hmlg_");
+      const checkoutUrl = `https://${sandbox ? "sandbox." : ""}asaas.com/checkoutSession/show?id=${encodeURIComponent(checkout.id)}`;
+      const createdAt = new Date().toISOString();
+      const billing: AsaasBillingState & { shopId: string } = { plan, checkoutUrl, status: "pending", updatedAt: createdAt, shopId: client.id };
+      await env.DB.prepare("INSERT OR REPLACE INTO app_state (id, value, updated_at) VALUES (?, ?, ?)")
+        .bind(`asaas-checkout:${checkout.id}`, JSON.stringify(billing), createdAt).run();
+      await env.DB.prepare("INSERT OR REPLACE INTO app_state (id, value, updated_at) VALUES (?, ?, ?)")
+        .bind(`asaas-client:${client.id}`, JSON.stringify(billing), createdAt).run();
+      return json({ checkoutUrl, plan, value });
+    } catch (error) {
+      console.error("Falha ao preparar checkout Asaas", error instanceof Error ? error.message : "unknown");
+      return json({ error: error instanceof Error ? error.message : "Não foi possível conectar ao Asaas." }, 502);
+    }
+  }
   if (resetPasswordMatch && request.method === "POST") {
     if (!isCentral || !env.SESSION_SECRET) return json({ error: "Acesso restrito à central." }, 401);
     const newPassword = base64Url(crypto.getRandomValues(new Uint8Array(15)));
