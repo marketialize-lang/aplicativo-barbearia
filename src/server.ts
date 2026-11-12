@@ -172,7 +172,7 @@ async function ensureAsaasWebhook(env: WorkerEnv, request: Request) {
     apiVersion: 3,
     authToken: webhookToken,
     sendType: "SEQUENTIALLY",
-    events: ["CHECKOUT_PAID", "SUBSCRIPTION_CREATED", "PAYMENT_RECEIVED", "PAYMENT_OVERDUE", "PAYMENT_DELETED", "PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED"],
+    events: ["CHECKOUT_PAID", "SUBSCRIPTION_CREATED", "SUBSCRIPTION_UPDATED", "SUBSCRIPTION_INACTIVATED", "SUBSCRIPTION_DELETED", "PAYMENT_CONFIRMED", "PAYMENT_RECEIVED", "PAYMENT_OVERDUE", "PAYMENT_DELETED", "PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED"],
   });
   await env.DB.prepare("INSERT OR REPLACE INTO app_state (id, value, updated_at) VALUES ('asaas-webhook-configured', ?, ?)")
     .bind(JSON.stringify({ url: `${baseUrl}/api/webhooks/asaas` }), new Date().toISOString()).run();
@@ -186,7 +186,7 @@ async function handleAsaasWebhook(request: Request, env: WorkerEnv) {
   const event = await request.json().catch(() => null) as {
     id?: unknown; event?: unknown; checkout?: { id?: unknown; customer?: unknown };
     payment?: { id?: unknown; customer?: unknown; subscription?: unknown };
-    subscription?: { id?: unknown; customer?: unknown; externalReference?: unknown };
+    subscription?: { id?: unknown; customer?: unknown; externalReference?: unknown; status?: unknown };
   } | null;
   if (!event || typeof event.id !== "string" || typeof event.event !== "string") return json({ error: "Evento inválido." }, 400);
   const processedId = `asaas-event:${event.id}`;
@@ -213,13 +213,14 @@ async function handleAsaasWebhook(request: Request, env: WorkerEnv) {
     if (found) {
       shopId = found.id.slice("asaas-client:".length);
       const billing = JSON.parse(found.value) as AsaasBillingState;
-      if (event.event === "SUBSCRIPTION_CREATED" && typeof event.subscription?.id === "string") {
+      if (["SUBSCRIPTION_CREATED", "SUBSCRIPTION_UPDATED"].includes(event.event) && typeof event.subscription?.id === "string") {
         const updatedAt = new Date().toISOString();
         await env.DB.prepare("INSERT OR REPLACE INTO app_state (id, value, updated_at) VALUES (?, ?, ?)")
           .bind(found.id, JSON.stringify({ ...billing, subscriptionId: event.subscription.id, updatedAt }), updatedAt).run();
       }
-      const paid = event.event === "PAYMENT_RECEIVED";
-      const declined = ["PAYMENT_OVERDUE", "PAYMENT_DELETED", "PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED"].includes(event.event);
+      const paid = ["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"].includes(event.event);
+      const declined = ["PAYMENT_OVERDUE", "PAYMENT_DELETED", "PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED", "SUBSCRIPTION_INACTIVATED", "SUBSCRIPTION_DELETED"].includes(event.event)
+        || (event.event === "SUBSCRIPTION_UPDATED" && event.subscription?.status === "INACTIVE");
       if (paid || declined) {
         const updatedAt = new Date().toISOString();
         const next = { ...billing, status: paid ? "active" : "paused", updatedAt } as AsaasBillingState;
