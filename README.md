@@ -38,7 +38,7 @@ bun run build
 
 O produto foi estruturado para operar com uma central privada (`/central`) e contas isoladas por barbearia. A central cria a conta de demonstração, mostra links para a página pública e para o painel, permite preparar o convite por WhatsApp e ativar ou pausar o acesso. Cada barbearia usa seu próprio identificador e senha, configura marca, agenda, equipe e serviços; os dados e agendamentos ficam separados por conta.
 
-A fase de demonstração e a ativação do plano são manuais. O código não cobra ninguém nem integra checkout nesta fase. Os valores de R$ 49,90/mês e R$ 300/ano seguem como proposta, ainda sem cobrança automática. Asaas pode ser integrado depois que o proprietário confirmar o preço e as tarifas que aceita pagar.
+A central prepara links de assinatura Asaas para R$ 49,90 por mês ou R$ 300 por ano (uma cobrança a cada ciclo anual). O pagamento é feito na página hospedada do Asaas, com PIX ou cartão. O painel só ativa a conta quando recebe o evento de pagamento confirmado; atraso, estorno, exclusão ou contestação podem pausar o acesso. A criação de link depende de cadastrar `ASAAS_API_KEY` como secret do Worker. A chave de Sandbox é usada para testes e a chave de Produção só deve ser conectada quando você decidir começar cobranças reais. O primeiro link gerado registra automaticamente o webhook seguro do aplicativo no Asaas.
 
 ## Serviços gratuitos preparados
 
@@ -63,8 +63,9 @@ No Workers Free, o Cloudflare documenta até 100 mil requisições por dia; o D1
 6. Publique com `bun run deploy:cloudflare`. O script compila, configura o binding `DB` no Worker e publica pelo plano vigente da conta.
 7. Acesse `/central`, entre com a senha e cadastre a primeira barbearia. A senha inicial do painel aparece uma única vez; copie e envie junto com a demo.
 8. Para e-mail, siga `google-apps-script/README.md`, publique `google-apps-script/Code.gs` como Web App executado pela sua conta Google e cadastre cada valor com `bunx wrangler secret put NOME_DO_SECRET --config .output/server/wrangler.json`.
+9. Para testar o Asaas, crie a chave de API Sandbox na conta Asaas e cadastre-a de forma privada no Cloudflare com `bunx wrangler secret put ASAAS_API_KEY --config .output/server/wrangler.json`. Não coloque a chave no código, no navegador ou em mensagens. O prefixo seleciona Sandbox (`$aact_hmlg_`) ou Produção (`$aact_prod_`).
 
-A conta começa em demonstração. Use os botões da central para ativar ou pausar o painel quando a venda for concluída. O sistema prepara o texto do convite para WhatsApp, mas o envio é manual.
+A conta começa em demonstração. Na central, gere e envie o link de plano mensal ou anual. Depois da confirmação recebida pelo webhook do Asaas, o acesso muda para ativo automaticamente. A central também permite pausar ou reabrir o acesso. A senha inicial do painel aparece uma única vez; copie e envie junto com a demo.
 
 ## Desenvolvimento local
 
