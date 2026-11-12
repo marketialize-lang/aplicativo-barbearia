@@ -1712,7 +1712,7 @@ function SettingsPage({
                 onChange={(event) => updateSettings({ email: event.target.value })}
               />
             </label>
-            <p className="email-setup-note">O cliente também recebe a confirmação. As mensagens saem pela conta Gmail gratuita conectada ao serviço, depois que a central concluir essa configuração.</p>
+            <p className="email-setup-note">O cliente também recebe a confirmação. Informe o endereço que deve receber os avisos de novos agendamentos.</p>
             <label>
               WhatsApp da loja
               <input
@@ -1774,8 +1774,8 @@ function SettingsPage({
             <Bell size={18} />
           </div>
           <div className="settings-note">
-            <Bell size={15} /> Com D1 e Email Service conectados no Cloudflare, cada agendamento
-            envia um aviso para este e-mail e uma confirmação para o e-mail informado pelo cliente.
+            <Bell size={15} /> O envio por Gmail está conectado. Cada agendamento envia um aviso
+            para este e-mail e uma confirmação para o endereço informado pelo cliente.
           </div>
         </section>
       </div>
