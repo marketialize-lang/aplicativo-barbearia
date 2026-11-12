@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "deploy:cloudflare": "bun run build && bun run scripts/configure-cloudflare.mjs && bunx wrangler --cwd .output/server deploy",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",

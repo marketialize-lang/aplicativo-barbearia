@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CentralRouteImport } from './routes/central'
 import { Route as BShopSlugRouteImport } from './routes/b/$shopSlug'
 import { Route as BShopSlugBarberSlugRouteImport } from './routes/b/$shopSlug/$barberSlug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CentralRoute = CentralRouteImport.update({
+  id: '/central',
+  path: '/central',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BShopSlugRoute = BShopSlugRouteImport.update({
@@ -31,30 +37,35 @@ const BShopSlugBarberSlugRoute = BShopSlugBarberSlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/central': typeof CentralRoute
   '/b/$shopSlug': typeof BShopSlugRouteWithChildren
   '/b/$shopSlug/$barberSlug': typeof BShopSlugBarberSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/central': typeof CentralRoute
   '/b/$shopSlug': typeof BShopSlugRouteWithChildren
   '/b/$shopSlug/$barberSlug': typeof BShopSlugBarberSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/central': typeof CentralRoute
   '/b/$shopSlug': typeof BShopSlugRouteWithChildren
   '/b/$shopSlug/$barberSlug': typeof BShopSlugBarberSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/b/$shopSlug' | '/b/$shopSlug/$barberSlug'
+  fullPaths: '/' | '/central' | '/b/$shopSlug' | '/b/$shopSlug/$barberSlug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/b/$shopSlug' | '/b/$shopSlug/$barberSlug'
-  id: '__root__' | '/' | '/b/$shopSlug' | '/b/$shopSlug/$barberSlug'
+  to: '/' | '/central' | '/b/$shopSlug' | '/b/$shopSlug/$barberSlug'
+  id:
+    '__root__' | '/' | '/central' | '/b/$shopSlug' | '/b/$shopSlug/$barberSlug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CentralRoute: typeof CentralRoute
   BShopSlugRoute: typeof BShopSlugRouteWithChildren
 }
 
@@ -65,6 +76,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/central': {
+      id: '/central'
+      path: '/central'
+      fullPath: '/central'
+      preLoaderRoute: typeof CentralRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/b/$shopSlug': {
@@ -98,6 +116,7 @@ const BShopSlugRouteWithChildren = BShopSlugRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CentralRoute: CentralRoute,
   BShopSlugRoute: BShopSlugRouteWithChildren,
 }
 export const routeTree = rootRouteImport

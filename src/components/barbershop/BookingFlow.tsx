@@ -75,6 +75,7 @@ export function BookingFlow({
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [booking, setBooking] = useState<Appointment | null>(null);
+  const [emailStatus, setEmailStatus] = useState<"sent" | "not-configured" | "failed">("not-configured");
 
   const service = workspace.services.find((item) => item.id === serviceId);
   const barber = workspace.barbers.find((item) => item.id === barberId);
@@ -112,7 +113,7 @@ export function BookingFlow({
     setStep("details");
   }
 
-  function submitBooking(event: FormEvent<HTMLFormElement>) {
+  async function submitBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!service || !barber || !time) return;
     const result = createBooking(workspace, {
@@ -132,9 +133,53 @@ export function BookingFlow({
       setTime("");
       return;
     }
+    let confirmedAppointment = result.appointment;
+    let workspaceAfterBooking = result.workspace;
+    if (!import.meta.env.DEV) {
+      try {
+        const response = await fetch("/api/bookings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            shopSlug: window.location.pathname.split("/").filter(Boolean)[1] || workspace.settings.slug,
+            appointment: result.appointment,
+          }),
+        });
+        const serverResult = (await response.json()) as {
+          error?: string;
+          emailStatus?: "sent" | "not-configured" | "failed";
+          appointment?: Appointment;
+        };
+        if (!response.ok) {
+          setError(serverResult.error ?? "Não foi possível reservar este horário agora.");
+          setStep("time");
+          setTime("");
+          return;
+        }
+        setEmailStatus(serverResult.emailStatus ?? "not-configured");
+        if (serverResult.appointment) {
+          confirmedAppointment = serverResult.appointment;
+          const draftId = result.appointment.id;
+          workspaceAfterBooking = {
+            ...result.workspace,
+            appointments: result.workspace.appointments.map((item) =>
+              item.id === draftId ? confirmedAppointment : item,
+            ),
+            notifications: result.workspace.notifications.map((item) =>
+              item.appointmentId === draftId
+                ? { ...item, appointmentId: confirmedAppointment.id }
+                : item,
+            ),
+          };
+        }
+      } catch {
+        setError("Não foi possível conectar ao servidor. Tente novamente.");
+        return;
+      }
+    }
     setError("");
-    onWorkspaceChange(result.workspace);
-    setBooking(result.appointment);
+    onWorkspaceChange(workspaceAfterBooking);
+    setBooking(confirmedAppointment);
     setStep("confirmed");
   }
 
@@ -468,8 +513,15 @@ export function BookingFlow({
               <p>
                 {booking.status === "canceled"
                   ? "O horário voltou a ficar disponível para outras pessoas."
-                  : "Seu horário já está reservado nesta demonstração. Confira os detalhes abaixo."}
+                  : "Seu horário foi registrado. Confira os detalhes abaixo."}
               </p>
+              {booking.status === "confirmed" && !import.meta.env.DEV && emailStatus !== "sent" && (
+                <p className="booking-email-note" role="status">
+                  {emailStatus === "failed"
+                    ? "Seu horário está reservado, mas o serviço de e-mail precisa ser revisado."
+                    : "Seu horário está reservado. As notificações por e-mail ainda não estão configuradas."}
+                </p>
+              )}
               <div className="booking-confirmation-details">
                 <div>
                   <span>DATA E HORA</span>

@@ -1579,9 +1579,22 @@ function SettingsPage({
   function handleLogoUpload(file?: File) {
     if (!file) return;
     if (!file.type.startsWith("image/")) return onNotify("Escolha um arquivo de imagem.");
-    if (file.size > 1024 * 1024) return onNotify("A imagem do logo deve ter até 1 MB.");
     const reader = new FileReader();
-    reader.onload = () => updateSettings({ logoUrl: String(reader.result ?? "") });
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const scale = Math.min(1, 720 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL("image/webp", 0.78);
+        if (compressed.length > 360_000) return onNotify("Esse logo ficou grande demais. Escolha uma imagem mais simples.");
+        updateSettings({ logoUrl: compressed });
+      };
+      image.onerror = () => onNotify("Não foi possível ler essa imagem.");
+      image.src = String(reader.result ?? "");
+    };
     reader.readAsDataURL(file);
   }
   return (
@@ -1691,13 +1704,15 @@ function SettingsPage({
           </div>
           <div className="settings-form-grid">
             <label>
-              E-mail da barbearia
+              Receber avisos de agendamentos neste e-mail
               <input
                 type="email"
+                required
                 value={settings.email}
                 onChange={(event) => updateSettings({ email: event.target.value })}
               />
             </label>
+            <p className="email-setup-note">O cliente também recebe a confirmação. As mensagens saem pela conta Gmail gratuita conectada ao serviço, depois que a central concluir essa configuração.</p>
             <label>
               WhatsApp da loja
               <input
@@ -1759,14 +1774,17 @@ function SettingsPage({
             <Bell size={18} />
           </div>
           <div className="settings-note">
-            <Bell size={15} /> Use o sino no topo do painel para ver novos agendamentos, ativar o som
-            de caixa registradora ou permitir avisos do navegador.
+            <Bell size={15} /> Com D1 e Email Service conectados no Cloudflare, cada agendamento
+            envia um aviso para este e-mail e uma confirmação para o e-mail informado pelo cliente.
           </div>
         </section>
       </div>
       <div className="settings-save-row">
         <span>
-          <CheckCircle2 size={15} /> Alterações salvas automaticamente neste navegador.
+          <CheckCircle2 size={15} />
+          {import.meta.env.DEV
+            ? "Alterações salvas automaticamente neste navegador."
+            : "Alterações sincronizadas com a nuvem."}
         </span>
         <button
           className="button-primary"
@@ -1819,6 +1837,13 @@ function Modal({
 export function ProsperousApp() {
   const { workspace, setWorkspace, resetDemo, ready } = useDemoWorkspace();
   const { toast, notify } = useToast();
+  const [authLoaded, setAuthLoaded] = useState(import.meta.env.DEV);
+  const [authenticated, setAuthenticated] = useState(import.meta.env.DEV);
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginShopSlug, setLoginShopSlug] = useState(() =>
+    typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("shop") ?? "",
+  );
+  const [authError, setAuthError] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(
@@ -1842,6 +1867,25 @@ export function ProsperousApp() {
     );
   });
   const unreadNotifications = visibleNotifications.filter((item) => !item.read);
+
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    let cancelled = false;
+    void fetch("/api/auth/session")
+      .then((response) => response.json())
+      .then((result: { authenticated?: boolean; role?: string }) => {
+        if (cancelled) return;
+        setAuthenticated(Boolean(result.authenticated && result.role === "shop"));
+        setAuthLoaded(true);
+        if (result.authenticated && result.role === "shop") window.dispatchEvent(new Event("workspace:refresh"));
+      })
+      .catch(() => {
+        if (!cancelled) setAuthLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
@@ -1939,6 +1983,66 @@ export function ProsperousApp() {
     setMobileNav(false);
   }
 
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthError("");
+    try {
+      const response = await fetch("/api/tenant/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: loginShopSlug, password: loginPassword }),
+      });
+      const result = (await response.json()) as { error?: string; authenticated?: boolean };
+      if (!response.ok || !result.authenticated) {
+        setAuthError(result.error ?? "Não foi possível entrar no painel.");
+        return;
+      }
+      setAuthenticated(true);
+      setLoginPassword("");
+      window.dispatchEvent(new Event("workspace:refresh"));
+    } catch {
+      setAuthError("Não foi possível conectar ao servidor. Tente novamente.");
+    }
+  }
+
+  if (!authLoaded && !import.meta.env.DEV) {
+    return <main className="admin-login"><p>Verificando acesso ao painel…</p></main>;
+  }
+
+  if (!authenticated && !import.meta.env.DEV) {
+    return (
+      <main className="admin-login">
+        <form className="admin-login-card" onSubmit={submitLogin}>
+          <span className="panel-kicker">PAINEL DA BARBEARIA</span>
+          <h1>Entre para gerenciar sua agenda.</h1>
+          <p>Use o identificador da sua barbearia e a senha recebida na ativação.</p>
+          <label>
+            Identificador da barbearia
+            <input
+              autoComplete="username"
+              required
+              value={loginShopSlug}
+              onChange={(event) => setLoginShopSlug(event.target.value)}
+              placeholder="ex.: barbearia-central"
+            />
+          </label>
+          <label>
+            Senha do painel
+            <input
+              autoComplete="current-password"
+              type="password"
+              required
+              value={loginPassword}
+              onChange={(event) => setLoginPassword(event.target.value)}
+            />
+          </label>
+          {authError && <p className="admin-login-error" role="alert">{authError}</p>}
+          <button className="button-primary" type="submit">Acessar painel</button>
+        </form>
+      </main>
+    );
+  }
+
   if (screen === "booking")
     return (
       <BookingFlow
@@ -1999,7 +2103,7 @@ export function ProsperousApp() {
           </span>
           <span>
             <strong>{workspace.settings.name}</strong>
-            <small>Plano demonstração</small>
+            <small>{import.meta.env.DEV ? "Plano demonstração" : "Plano inicial"}</small>
           </span>
           <ChevronDown size={15} />
         </div>
@@ -2078,7 +2182,7 @@ export function ProsperousApp() {
           </div>
           <div className="topbar-right">
             <span className="demo-indicator">
-              <i /> DEMONSTRAÇÃO
+              <i /> {import.meta.env.DEV ? "DEMONSTRAÇÃO" : "MVP ATIVO"}
             </span>
             <div className="notification-menu-wrap">
               <button
@@ -2190,7 +2294,7 @@ export function ProsperousApp() {
           </div>
         </header>
         <main className="app-content">
-          <div className="demo-banner">
+          {import.meta.env.DEV && <div className="demo-banner">
             <span className="demo-banner-icon">
               <Eye size={15} />
             </span>
@@ -2209,7 +2313,7 @@ export function ProsperousApp() {
             >
               <RotateCcw size={14} /> Restaurar
             </button>
-          </div>
+          </div>}
           {screen === "dashboard" && (
             <Dashboard
               workspace={workspace}
