@@ -11,6 +11,7 @@ type Client = {
   created_at: string;
   demoUrl: string;
   panelUrl: string;
+  billing: { plan: "monthly" | "yearly"; checkoutUrl?: string; status: "pending" | "active" | "paused" } | null;
 };
 
 const statusLabel: Record<Client["status"], string> = {
@@ -32,6 +33,7 @@ export function CentralDashboard() {
   const [resetPassword, setResetPassword] = useState<{ clientId: string; value: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState("");
 
   async function loadClients() {
     const response = await fetch("/api/central/clients");
@@ -95,11 +97,26 @@ export function CentralDashboard() {
   }
 
   async function changeStatus(client: Client) {
-    const status = client.status === "active" ? "paused" : "active";
+    const status = client.status === "active" ? "paused" : client.status === "demo" ? "paused" : client.billing?.status === "active" ? "active" : "demo";
     const response = await fetch(`/api/central/clients/${client.id}`, {
       method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }),
     });
     if (response.ok) await loadClients();
+  }
+
+  async function createCheckout(client: Client, plan: "monthly" | "yearly") {
+    setCheckoutLoading(`${client.id}:${plan}`);
+    setError("");
+    try {
+      const response = await fetch(`/api/central/clients/${client.id}/checkout`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan }),
+      });
+      const result = await response.json() as { checkoutUrl?: string; error?: string };
+      if (!response.ok || !result.checkoutUrl) throw new Error(result.error ?? "Não foi possível gerar a cobrança.");
+      await loadClients();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Falha ao gerar o link do Asaas.");
+    } finally { setCheckoutLoading(""); }
   }
 
   async function regeneratePassword(client: Client) {
@@ -142,6 +159,7 @@ export function CentralDashboard() {
         <div className="central-brand"><span className="central-mark"><Scissors size={20} /></span><div><span className="panel-kicker">SUA OPERAÇÃO</span><h1>Central de barbearias</h1></div></div>
         <button className="central-logout" type="button" onClick={() => void logout()}><LogOut size={16} /> Sair</button>
       </header>
+      {error && <p className="central-error" role="alert">{error}</p>}
       <section className="central-summary" aria-label="Resumo da central">
         <article><span>BARBEARIAS ATIVAS</span><strong>{activeCount}</strong><small>acessos liberados</small></article>
         <article><span>EM DEMONSTRAÇÃO</span><strong>{demoCount}</strong><small>testes em andamento</small></article>
@@ -159,7 +177,7 @@ export function CentralDashboard() {
             <button className="button-primary" type="submit" disabled={saving}>{saving ? "Criando..." : "Criar demo"}</button>
           </form>
           {initialPassword && <div className="central-credential"><strong>Acesso inicial — guarde agora</strong><p>A senha aparece só neste momento. Envie-a ao responsável junto do link do painel.</p><code>{initialPassword}</code><button type="button" onClick={() => void copy(initialPassword)}>{copied === initialPassword ? <Check size={15} /> : <Copy size={15} />} Copiar senha</button></div>}
-          <small className="central-plan-note">Ativação e plano são controlados manualmente nesta fase. Nenhuma cobrança é feita pelo sistema.</small>
+          <small className="central-plan-note">Prepare o link mensal (R$ 49,90) ou anual (R$ 300, cobrança única a cada ano). O acesso é liberado pelo aviso de pagamento confirmado do Asaas.</small>
         </article>
         <section className="central-panel central-clients">
           <div className="central-section-title"><div><span className="panel-kicker">CARTEIRA</span><h2>Barbearias-clientes</h2></div><Users size={18} /></div>
@@ -168,11 +186,14 @@ export function CentralDashboard() {
               const demoLink = `${window.location.origin}${client.demoUrl}`;
               const panelLink = `${window.location.origin}${client.panelUrl}`;
               const phoneDigits = client.phone.replace(/\D/g, "");
-              const shareText = `Olá! Aqui está a demonstração da ${client.name}: ${demoLink}. Para testar o painel, acesse ${panelLink}.`;
+              const paymentText = client.billing?.checkoutUrl ? ` Para seguir com o plano ${client.billing.plan === "monthly" ? "mensal de R$ 49,90" : "anual de R$ 300"}, use este link seguro: ${client.billing.checkoutUrl}.` : "";
+              const shareText = `Olá! Aqui está a demonstração da ${client.name}: ${demoLink}. Para testar o painel, acesse ${panelLink}.${paymentText}`;
               return <article className="central-client-card" key={client.id}>
                 <div className="central-client-top"><div className="central-avatar">{client.name.slice(0, 1).toUpperCase()}</div><div className="central-client-name"><strong>{client.name}</strong><span>{client.email}</span></div><span className={`central-status central-status-${client.status}`}>{statusLabel[client.status]}</span></div>
                 <div className="central-links"><a href={demoLink} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Abrir demo</a><a href={panelLink} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Painel</a></div>
-                <div className="central-client-actions"><button type="button" onClick={() => void copy(demoLink)}>{copied === demoLink ? <Check size={14} /> : <Copy size={14} />} Copiar demo</button>{phoneDigits ? <a href={`https://wa.me/${phoneDigits}?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer"><Send size={14} /> Preparar WhatsApp</a> : <button type="button" onClick={() => void copy(shareText)}>{copied === shareText ? <Check size={14} /> : <Copy size={14} />} Copiar mensagem</button>}<button type="button" onClick={() => void regeneratePassword(client)}>Gerar senha</button><button type="button" onClick={() => void changeStatus(client)}>{client.status === "active" ? "Pausar acesso" : "Ativar plano"}</button></div>
+                <div className="central-client-actions"><button type="button" disabled={checkoutLoading.startsWith(`${client.id}:`)} onClick={() => void createCheckout(client, "monthly")}>{checkoutLoading === `${client.id}:monthly` ? "Gerando..." : "Link mensal · R$ 49,90"}</button><button type="button" disabled={checkoutLoading.startsWith(`${client.id}:`)} onClick={() => void createCheckout(client, "yearly")}>{checkoutLoading === `${client.id}:yearly` ? "Gerando..." : "Link anual · R$ 300"}</button></div>
+                {client.billing?.checkoutUrl && <div className="central-credential"><strong>{client.billing.status === "active" ? "Plano pago ativo" : client.billing.status === "paused" ? "Plano pausado" : "Aguardando pagamento"} · {client.billing.plan === "monthly" ? "R$ 49,90/mês" : "R$ 300/ano"}</strong><div className="central-client-actions"><a href={client.billing.checkoutUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Abrir link de pagamento</a><button type="button" onClick={() => void copy(client.billing!.checkoutUrl!)}>{copied === client.billing.checkoutUrl ? <Check size={14} /> : <Copy size={14} />} Copiar cobrança</button></div></div>}
+                <div className="central-client-actions"><button type="button" onClick={() => void copy(demoLink)}>{copied === demoLink ? <Check size={14} /> : <Copy size={14} />} Copiar demo</button>{phoneDigits ? <a href={`https://wa.me/${phoneDigits}?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer"><Send size={14} /> Preparar WhatsApp</a> : <button type="button" onClick={() => void copy(shareText)}>{copied === shareText ? <Check size={14} /> : <Copy size={14} />} Copiar mensagem</button>}<button type="button" onClick={() => void regeneratePassword(client)}>Gerar senha</button><button type="button" onClick={() => void changeStatus(client)}>{client.status === "active" ? "Pausar acesso" : client.status === "demo" ? "Pausar demo" : client.billing?.status === "active" ? "Reativar acesso pago" : "Reabrir demo"}</button></div>
                 {resetPassword?.clientId === client.id && <div className="central-credential central-reset-password"><strong>Nova senha — copie antes de sair</strong><code>{resetPassword.value}</code><button type="button" onClick={() => void copy(resetPassword.value)}>{copied === resetPassword.value ? <Check size={15} /> : <Copy size={15} />} Copiar senha</button></div>}
                 <small className="central-client-created">Criada em {new Date(client.created_at).toLocaleDateString("pt-BR")}</small>
               </article>;
