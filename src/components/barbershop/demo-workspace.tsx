@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { DemoWorkspaceContext } from "@/components/barbershop/demo-workspace-context";
 import {
   createDemoWorkspace,
+  DEMO_STORAGE_KEY,
   loadDemoWorkspace,
   saveDemoWorkspace,
   type DemoWorkspace,
@@ -15,6 +16,16 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setWorkspace(loadDemoWorkspace());
     setReady(true);
+  }, []);
+
+  useEffect(() => {
+    function syncWorkspace(event: StorageEvent) {
+      if (event.key === null || event.key === DEMO_STORAGE_KEY) {
+        setWorkspace(loadDemoWorkspace());
+      }
+    }
+    window.addEventListener("storage", syncWorkspace);
+    return () => window.removeEventListener("storage", syncWorkspace);
   }, []);
 
   useEffect(() => {

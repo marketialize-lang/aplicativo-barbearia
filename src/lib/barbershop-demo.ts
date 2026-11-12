@@ -66,6 +66,13 @@ export type ProductSale = {
   paid: boolean;
 };
 
+export type BookingNotification = {
+  id: string;
+  appointmentId: string;
+  createdAt: string;
+  read: boolean;
+};
+
 export type ShopSettings = {
   name: string;
   slug: string;
@@ -80,10 +87,6 @@ export type ShopSettings = {
   cancellationHours: number;
   openTime: string;
   closeTime: string;
-  sendClientConfirmationEmail: boolean;
-  notifyShopByEmail: boolean;
-  notifyBarberByEmail: boolean;
-  reminderHours: number;
 };
 
 export type DemoWorkspace = {
@@ -92,6 +95,7 @@ export type DemoWorkspace = {
   services: Service[];
   products: Product[];
   appointments: Appointment[];
+  notifications: BookingNotification[];
   sales: ProductSale[];
 };
 
@@ -511,15 +515,12 @@ export function createDemoWorkspace(today = TODAY_LABEL): DemoWorkspace {
       cancellationHours: 2,
       openTime: "09:00",
       closeTime: "20:00",
-      sendClientConfirmationEmail: true,
-      notifyShopByEmail: true,
-      notifyBarberByEmail: true,
-      reminderHours: 24,
     },
     barbers,
     services,
     products,
     appointments,
+    notifications: [],
     sales: [
       {
         id: "venda-1",
@@ -564,6 +565,7 @@ export function loadDemoWorkspace(): DemoWorkspace {
       ...defaults,
       ...parsed,
       settings: { ...defaults.settings, ...parsed.settings },
+      notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
     };
   } catch {
     return createDemoWorkspace(new Date().toLocaleDateString("en-CA"));
@@ -690,7 +692,19 @@ export function createBooking(
     manageToken: `manage-${Math.random().toString(36).slice(2, 14)}`,
   };
   return {
-    workspace: { ...workspace, appointments: [...workspace.appointments, appointment] },
+    workspace: {
+      ...workspace,
+      appointments: [...workspace.appointments, appointment],
+      notifications: [
+        {
+          id: `notif-${appointment.id}`,
+          appointmentId: appointment.id,
+          createdAt: appointment.createdAt,
+          read: false,
+        },
+        ...workspace.notifications,
+      ],
+    },
     appointment,
   };
 }

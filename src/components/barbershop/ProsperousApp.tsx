@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import {
   Activity,
   ArrowRight,
@@ -28,9 +28,10 @@ import {
   Settings2,
   Share2,
   ShoppingBag,
-  ShieldCheck,
   UserRound,
   Users,
+  Volume2,
+  VolumeX,
   Wallet,
   X,
 } from "lucide-react";
@@ -141,6 +142,25 @@ function serviceFor(workspace: DemoWorkspace, serviceId: string) {
 
 function whatsAppUrl(phone: string, text: string) {
   return `https://wa.me/${phone.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
+}
+
+function playRegisterSound(context: AudioContext) {
+  const notes = [1046.5, 1318.5, 1568];
+  const start = context.currentTime;
+  notes.forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const at = start + index * 0.11;
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(frequency, at);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.12, at + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.28);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(at);
+    oscillator.stop(at + 0.29);
+  });
 }
 
 function useToast() {
@@ -1733,65 +1753,14 @@ function SettingsPage({
         <section className="panel settings-card settings-wide">
           <div className="panel-head">
             <div>
-              <span className="panel-kicker">AVISOS E LEMBRETES</span>
-              <h2>E-mails da agenda</h2>
+              <span className="panel-kicker">NOTIFICAÇÕES</span>
+              <h2>Avise a equipe sobre novos horários</h2>
             </div>
             <Bell size={18} />
           </div>
-          <div className="email-settings-grid">
-            <label className="email-setting-row">
-              <input
-                type="checkbox"
-                checked={settings.sendClientConfirmationEmail}
-                onChange={(event) =>
-                  updateSettings({ sendClientConfirmationEmail: event.target.checked })
-                }
-              />
-              <span>
-                <strong>Confirmação para o cliente</strong>
-                <small>Enviar para o endereço informado durante o agendamento.</small>
-              </span>
-            </label>
-            <label className="email-setting-row">
-              <input
-                type="checkbox"
-                checked={settings.notifyShopByEmail}
-                onChange={(event) => updateSettings({ notifyShopByEmail: event.target.checked })}
-              />
-              <span>
-                <strong>Avisar a barbearia</strong>
-                <small>Enviar para {settings.email || "o e-mail da loja"}.</small>
-              </span>
-            </label>
-            <label className="email-setting-row">
-              <input
-                type="checkbox"
-                checked={settings.notifyBarberByEmail}
-                onChange={(event) => updateSettings({ notifyBarberByEmail: event.target.checked })}
-              />
-              <span>
-                <strong>Avisar o barbeiro</strong>
-                <small>Usar o e-mail cadastrado no perfil de cada profissional.</small>
-              </span>
-            </label>
-            <label className="email-reminder-setting">
-              Lembrete antes do horário
-              <span>
-                <input
-                  type="number"
-                  min={1}
-                  max={168}
-                  value={settings.reminderHours}
-                  onChange={(event) => updateSettings({ reminderHours: Number(event.target.value) })}
-                />
-                horas
-              </span>
-            </label>
-          </div>
           <div className="settings-note">
-            <ShieldCheck size={15} /> Preferências e destinatários são ajustados aqui. Nesta
-            demonstração, os dados ficam salvos neste navegador e os e-mails automáticos ainda não
-            são enviados.
+            <Bell size={15} /> Use o sino no topo do painel para ver novos agendamentos, ativar o som
+            de caixa registradora ou permitir avisos do navegador.
           </div>
         </section>
       </div>
@@ -1850,6 +1819,15 @@ function Modal({
 export function ProsperousApp() {
   const { workspace, setWorkspace, resetDemo, ready } = useDemoWorkspace();
   const { toast, notify } = useToast();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(
+    () => typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted",
+  );
+  const soundContext = useRef<AudioContext | null>(null);
+  const seenNotificationIds = useRef<Set<string> | null>(null);
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [role, setRole] = useState<UserRole>("owner");
   const [barberId, setBarberId] = useState(workspace.barbers[0]?.id ?? "rafael");
@@ -1857,6 +1835,78 @@ export function ProsperousApp() {
   const [mobileNav, setMobileNav] = useState(false);
   const today = localDateKey();
   const barber = useMemo(() => barberFor(workspace, barberId), [workspace, barberId]);
+  const visibleNotifications = workspace.notifications.filter((item) => {
+    if (role === "owner") return true;
+    return workspace.appointments.some(
+      (appointment) => appointment.id === item.appointmentId && appointment.barberId === barberId,
+    );
+  });
+  const unreadNotifications = visibleNotifications.filter((item) => !item.read);
+
+  useEffect(() => {
+    if (!ready) return;
+    const existingIds = new Set(workspace.notifications.map((item) => item.id));
+    if (seenNotificationIds.current === null) {
+      seenNotificationIds.current = existingIds;
+      return;
+    }
+    const fresh = workspace.notifications.filter(
+      (item) => !item.read && !seenNotificationIds.current?.has(item.id),
+    );
+    seenNotificationIds.current = existingIds;
+    if (role !== "owner" || fresh.length === 0) return;
+
+    const newest = fresh[0];
+    const appointment = workspace.appointments.find((item) => item.id === newest?.appointmentId);
+    if (!appointment) return;
+    const service = serviceFor(workspace, appointment.serviceId);
+    const barber = barberFor(workspace, appointment.barberId);
+    const title = `Novo agendamento · ${appointment.clientName}`;
+    const details = `${appointment.time} · ${service?.name ?? "Serviço"} · ${barber?.name ?? "Barbeiro"}`;
+    notifyRef.current(`${title}: ${details}`);
+    if (soundEnabled && soundContext.current) playRegisterSound(soundContext.current);
+    if (browserNotificationsEnabled && "Notification" in window) {
+      new Notification(title, { body: details, icon: "/favicon.ico" });
+    }
+  }, [workspace.notifications, workspace.appointments, workspace.services, workspace.barbers, ready, role, soundEnabled, browserNotificationsEnabled]);
+
+  async function toggleNotificationSound() {
+    if (soundEnabled) {
+      await soundContext.current?.close();
+      soundContext.current = null;
+      setSoundEnabled(false);
+      return;
+    }
+    if (typeof window.AudioContext === "undefined") {
+      notify("Este navegador não oferece aviso sonoro.");
+      return;
+    }
+    const context = new AudioContext();
+    await context.resume();
+    soundContext.current = context;
+    setSoundEnabled(true);
+    playRegisterSound(context);
+  }
+
+  async function enableBrowserNotifications() {
+    if (!("Notification" in window)) {
+      notify("Este navegador não oferece notificações do sistema.");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setBrowserNotificationsEnabled(permission === "granted");
+    notify(permission === "granted" ? "Avisos do navegador ativados." : "Permissão não concedida.");
+  }
+
+  function markNotificationsRead() {
+    const visibleIds = new Set(visibleNotifications.map((item) => item.id));
+    setWorkspace({
+      ...workspace,
+      notifications: workspace.notifications.map((item) =>
+        visibleIds.has(item.id) ? { ...item, read: true } : item,
+      ),
+    });
+  }
   const visibleScreens: Screen[] =
     role === "owner"
       ? ["dashboard", "agenda", "team", "services", "products", "settings"]
@@ -2030,10 +2080,90 @@ export function ProsperousApp() {
             <span className="demo-indicator">
               <i /> DEMONSTRAÇÃO
             </span>
-            <button className="icon-button topbar-bell" aria-label="Notificações" type="button">
-              <Bell size={18} />
-              <i />
-            </button>
+            <div className="notification-menu-wrap">
+              <button
+                className="icon-button topbar-bell"
+                aria-label={`Notificações${unreadNotifications.length ? `, ${unreadNotifications.length} novas` : ""}`}
+                aria-expanded={notificationsOpen}
+                onClick={() => setNotificationsOpen((open) => !open)}
+                type="button"
+              >
+                <Bell size={18} />
+                {unreadNotifications.length > 0 && (
+                  <span className="notification-unread-count">
+                    {unreadNotifications.length > 9 ? "9+" : unreadNotifications.length}
+                  </span>
+                )}
+              </button>
+              {notificationsOpen && (
+                <section className="notification-panel" aria-label="Notificações de agendamento">
+                  <div className="notification-panel-head">
+                    <div>
+                      <strong>Agendamentos</strong>
+                      <span>{unreadNotifications.length} não lidos</span>
+                    </div>
+                    {unreadNotifications.length > 0 && (
+                      <button className="text-button" onClick={markNotificationsRead} type="button">
+                        Marcar lidos
+                      </button>
+                    )}
+                  </div>
+                  <div className="notification-controls">
+                    <button onClick={() => void toggleNotificationSound()} type="button">
+                      {soundEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                      {soundEnabled ? "Som ligado" : "Ativar som"}
+                    </button>
+                    <button onClick={() => void enableBrowserNotifications()} type="button">
+                      <Bell size={14} />
+                      {browserNotificationsEnabled ? "Avisos do navegador ligados" : "Avisos do navegador"}
+                    </button>
+                  </div>
+                  {visibleNotifications.length === 0 ? (
+                    <div className="notification-empty">
+                      <CalendarDays size={18} />
+                      <span>Nenhum agendamento novo por enquanto.</span>
+                    </div>
+                  ) : (
+                    <div className="notification-list">
+                      {visibleNotifications.slice(0, 8).map((item) => {
+                        const appointment = workspace.appointments.find(
+                          (entry) => entry.id === item.appointmentId,
+                        );
+                        if (!appointment) return null;
+                        const service = serviceFor(workspace, appointment.serviceId);
+                        const assignedBarber = barberFor(workspace, appointment.barberId);
+                        return (
+                          <button
+                            className={`notification-row ${item.read ? "" : "unread"}`}
+                            key={item.id}
+                            onClick={() => {
+                              setWorkspace({
+                                ...workspace,
+                                notifications: workspace.notifications.map((entry) =>
+                                  entry.id === item.id ? { ...entry, read: true } : entry,
+                                ),
+                              });
+                              setNotificationsOpen(false);
+                              navigate("agenda");
+                            }}
+                            type="button"
+                          >
+                            <span className="notification-dot" />
+                            <span className="notification-copy">
+                              <strong>Novo agendamento · {appointment.clientName}</strong>
+                              <small>
+                                {formatFullDate(appointment.date)} · {appointment.time} · {service?.name}
+                              </small>
+                              <small>Barbeiro: {assignedBarber?.name}</small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
+            </div>
             <div className="role-switch">
               <span>Ver como</span>
               <select

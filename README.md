@@ -8,9 +8,10 @@ Aplicativo responsivo para gestão de barbearias, com a ideia **“Agenda que oc
 - Visão simulada de proprietário e barbeiro; o barbeiro vê seus próprios dados e ajusta sua disponibilidade e serviços atendidos.
 - Cadastro de equipe, serviços e produtos; registro manual de vendas.
 - Fluxo público de agendamento sem conta, com seleção de serviço, barbeiro, dia e horário.
+- Notificações internas de novos agendamentos, sincronizadas entre abas abertas no mesmo navegador, com som de caixa registradora e aviso do navegador opcionais.
 - Links públicos da barbearia (`/b/:shopSlug`) e do barbeiro (`/b/:shopSlug/:barberSlug`).
 - Personalização local do nome, logotipo, cores prontas ou personalizadas, contatos, jornada e janela de cancelamento.
-- Preferências de confirmação por e-mail para cliente, barbearia e barbeiro, com lembrete ajustável.
+- Avisos internos de novos agendamentos, com som de caixa registradora e alerta do navegador opcionais.
 - Catálogo público de produtos, sem checkout online.
 
 Use o seletor **“Ver como”** para alternar a demonstração entre proprietário e barbeiros. **Restaurar** apaga as alterações de demonstração e repõe os dados de exemplo.
@@ -35,4 +36,4 @@ bun run build
 
 ## Limites desta demonstração
 
-Esta versão guarda dados e configurações somente no navegador atual. Não há contas reais, sincronização entre dispositivos, persistência compartilhada entre barbearias nem envio automático de e-mails. As preferências de destinatários e lembretes já podem ser ajustadas no painel; para enviar mensagens e sincronizar reservas em produção, o aplicativo ainda precisa de um serviço de dados e de envio conectado. WhatsApp usa links com mensagem pronta, sem envio automático por API.
+Esta versão guarda dados e configurações somente no navegador atual. Os avisos internos podem chegar às outras abas abertas no mesmo navegador, mas não são sincronizados com outro aparelho. Não há contas reais, banco compartilhado nem envio automático de e-mails. WhatsApp usa links com mensagem pronta, sem envio automático por API.
