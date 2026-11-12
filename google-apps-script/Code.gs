@@ -3,6 +3,10 @@
  * Deploy as a Web App that executes as the Google account owner.
  * Keep WEBHOOK_SECRET in Script Properties; never put it in browser code.
  */
+function authorizeEmail() {
+  MailApp.getRemainingDailyQuota();
+}
+
 function doPost(e) {
   try {
     const request = JSON.parse((e && e.postData && e.postData.contents) || "{}");
