@@ -24,6 +24,17 @@ type WorkerEnv = {
   EMAIL_WEBHOOK_SECRET?: string;
 };
 
+type CloudflareRuntimeRequest = Request & {
+  runtime?: { cloudflare?: { env?: WorkerEnv } };
+};
+
+function resolveWorkerEnv(request: Request, env: unknown): WorkerEnv {
+  const runtimeEnv = (request as CloudflareRuntimeRequest).runtime?.cloudflare?.env;
+  const globalEnv = (globalThis as typeof globalThis & { __env__?: WorkerEnv }).__env__;
+  const explicitEnv = env && typeof env === "object" ? env as WorkerEnv : undefined;
+  return { ...globalEnv, ...runtimeEnv, ...explicitEnv };
+}
+
 type BookingPayload = {
   clientName?: unknown;
   clientEmail?: unknown;
@@ -338,10 +349,11 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      const apiResponse = await handleApi(request, (env ?? {}) as WorkerEnv);
+      const workerEnv = resolveWorkerEnv(request, env);
+      const apiResponse = await handleApi(request, workerEnv);
       if (apiResponse) return apiResponse;
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
+      const response = await handler.fetch(request, workerEnv, ctx);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
